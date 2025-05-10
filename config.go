@@ -9,7 +9,7 @@ package commit
 //
 
 import (
-	"cs351/labrpc"
+	"3PhaseCommit/labrpc"
 	"runtime"
 	"sync"
 	"testing"
@@ -19,6 +19,8 @@ import (
 	"fmt"
 	"time"
 )
+
+
 
 func randstring(n int) string {
 	b := make([]byte, 2*n)

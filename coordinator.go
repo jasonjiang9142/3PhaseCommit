@@ -1,7 +1,7 @@
 package commit
 
 import (
-	"cs351/labrpc"
+	"3PhaseCommit/labrpc"
 	"log"
 	"sync"
 	"sync/atomic"
