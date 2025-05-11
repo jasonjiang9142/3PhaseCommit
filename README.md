@@ -1,116 +1,115 @@
-# Assignment 4: 3PC
 
-**Due: Thu, May 1**
-
-## Three-Phase Commit
-
-Three-Phase Commit (3PC) is an extended version of the Two-Phase Commit (2PC) protocol that we've studied in this course. For this assignment, you'll be implementing this protocol to ensure atomic transactions (i.e. sequences of get/set requests) on a distributed key-value store. For our purposes, the main advantage of 3PC over 2PC is that the transaction coordinator doesn't need to keep any persistent state. This means that in theory, any one of the servers could take over as coordinator should the initial one fail. For this assignment, this means that some of the tests will crash and restart your coordinator and you'll be tested on its ability to recover from this failure. 
-
-## The Protocol
-
-Here is the 3PC protocol as you should implement it for this assignment:
-
-1. A client submits Get and Set operations to individual servers. The servers log these operations, but don't execute them yet.
-
-2. The client sends a FinishTransaction message to the transaction coordinator.
-
-3. The coordinator sends Prepare messages to each server. If a server receives Prepare for a transaction that it does not have any operations logged for, it replies that the transaction isn't relevant to it. Future PreCommit and Commit messages for this transaction should only be sent to the relevant servers. Each server attempts to obtain a lock for each key that the transaction uses. If this succeeds, the server votes Yes. Otherwise, the server releases any locks it took and votes No. If any servers vote No or timeout, the coordinator Aborts the transaction.
+# Three-Phase Commit (3PC) Implementation
 
 
-4. Otherwise, the coordinator sends PreCommit messages to each relevant server. Each server just needs to acknowledge PreCommit. If any requests timeout, it Aborts this transaction.
+# Overview
 
-5. Otherwise, the coordinator sends Commit messages to each relevant server. Each server performs its operations for the transaction and replies with the values of any Get operations. If any requests timeout, the coordinator **resends** them until the server responds.
-6. Then the coordinator replies to the client that the transaction has been committed and sends the client the values of all Get operations in that transaction.
+This project implements the Three-Phase Commit (3PC) protocol in distributed systems. 3PC is an extension of the original Two-Phase Commit (2PC) protocol, for ensuring atomic transactions on a distributed key-value store. The primary advantage of 3PC over 2PC is that the transaction coordinator does not need to maintain persistent state, allowing any server to potentially take over as coordinator in case of failure. This implementation handles coordinator crashes and recovery, ensuring robust transaction management in a distributed environment.
 
-### A Note on Concurrency
 
-To help avoid concurrency issues, we will use shared mutexes to protect individual keys. This means that at any given time, either one transaction can lock a key for writing, or several transactions can lock the key for reading. Go's implementation of this is `sync.RWMutex`. To lock/unlock for writing, use `Lock()` and `Unlock()`. To lock/unlock for reading, use `RLock()` and `RUnlock()`.
+## Features
 
-### Aborting
+- **Atomic Transactions:** Supports sequences of Get and Set operations as atomic units.
+- **Coordinator Recovery:** Recovers from coordinator crashes by querying participating servers.
+- **Concurrency Control:** Uses `sync.RWMutex` for concurrent key access.
+- **Non-Persistent Servers:** Simulates failure via disconnection, not crashes.
+- **Robust Testing:** Comprehensive suite for commits, aborts, recovery, and serializability.
 
-If at any point during the protocol the coordinator decides to Abort the transaction, it should send Abort messages to all servers and respond to the client to inform it that the transaction has been aborted. If any requests timeout, the coordinator should resend them until the server responds.
+---
+
+## Protocol Description
+
+### **0. Client Operations**
+- Clients submit `Get` and `Set` operations to servers (logged but not executed).
+- Clients call `FinishTransaction` on the coordinator to begin 3PC.
+
+### **1. Prepare Phase**
+- The coordinator sends `Prepare` messages to all servers.
+- Servers attempt to lock keys involved in the transaction. If a server has no operations for the transaction, it marks itself as irrelevant.
+- Servers vote `Yes` if locks are acquired, otherwise `No`. If any server votes `No` or times out, the coordinator aborts the transaction.
+
+### **2. PreCommit Phase**
+- If all votes are Yes, coordinator sends `PreCommit`.
+- Servers acknowledge, or coordinator aborts on timeout.
+
+### **3. Commit Phase**
+- If all `PreCommit` messages are acknowledged, the coordinator sends `Commit` messages to relevant servers.
+- Servers execute the logged operations and return `Get` operation values.
+- The coordinator retries `Commit` messages on timeout until servers respond.
+- The coordinator notifies the client of the committed transaction and returns `Get` values.
+
+### Abort Handling
+- If the coordinator decides to `abort` (e.g., due to a `No` vote or timeout), it sends `Abort` messages to all servers and informs the client.
 
 ### Coordinator Recovery
+- On restart, the coordinator sends Query messages to all servers to determine transaction states.
+- Based on server responses, the coordinator:
+    - Aborts transactions voted No or already aborted.
+    - Resumes transactions at the Commit phase if some servers have committed.
+    - Resumes at the PreCommit phase if any server has pre-committed.
+    - Resumes at the Prepare phase if any server has voted Yes.
 
-The coordinator can crash at any time. When it restarts, it should send Query messages to each server to get an understanding of the state of the system. Servers should respond with the state of each transaction that it knows about. If any requests timeout, the coordinator **resends** them until the server responds. The coordinator **cannot** finish recovering until it has successfully Queried each server. Then the coordinator makes the following checks to resume the system:
 
-- For each transaction that any server has already voted no for or aborted, the coordinator Aborts that transaction.
-- For each remaining transaction that some, but not all, servers have already committed, the coordinator resumes the protocol for that transaction from sending out Commit messages.
-- For each remaining transaction that any server has pre-committed, the coordinator resumes the protocol for that transaction from sending out PreCommit messages.
-- For each remaining transaction that any server has voted yes for, the coordinator resumes the protocol for that transaction from sending out Prepare messages.
 
-### Server Recovery
+---
 
-In theory, nearly all server data needs to be persistent. Instead of making you implement this, we simulate server failure by just disconnecting servers from the network (instead of crashing them). This means you **don't** need to implement any special logic for server recovery.
+## Code Structure
 
-## The Code
+| File            | Description                                      |
+|-----------------|--------------------------------------------------|
+| `coordinator.go`| 3PC coordinator logic and recovery               |
+| `server.go`     | Server logic, logging, and locking               |
+| `3pc.go`        | Shared data structures and RPC definitions       
 
-You'll be implementing both the transaction coordinator and the servers. Code for the coordinator lives in `coordinator.go`, code for the servers lives in `server.go`, and data structures shared between them live in `3pc.go`. 
+---
 
-### Client Interface
+## Client Interface
 
-The coordinator and servers both have methods that are meant to be called by clients (which the tester will simulate). These method signatures are provided in the skeleton code, along with comments to remind you what they should do.
+### Coordinator
+- `MakeCoordinator()`: Initializes a new coordinator, triggering recovery if restarted.
+- `FinishTransaction(txnID)`: Starts the 3PC protocol for a given transaction ID.
+- `ResponseMsg`: Struct for client responses, including transaction ID, commit status, and `Get` operation values.
 
-``` go
-// --- Coordinator --- 
+### Server
+- `MakeServer(keys)`: Initializes a server with a list of managed keys.
+- `Get(txnID, key)`: Logs a Get operation for a transaction.
+- `Set(txnID, key, val)`: Logs a Set operation for a transaction.
 
-// Initialize new Coordinator
-//
-// This will be called at the beginning of a test to create a new Coordinator
-// It will also be called when the Coordinator restarts, so you'll need to trigger recovery here
-// respChan is how you'll send messages to the client to notify it of committed or aborted transactions
-func MakeCoordinator(servers []*labrpc.ClientEnd, respChan chan ResponseMsg) *Coordinator
+---
 
-// Start the 3PC protocol for a particular transaction
-// TID is a unique transaction ID generated by the client
-// This may be called concurrently. Ensure that any shared data is properly synchronized to handle concurrent calls.
-func (co *Coordinator) FinishTransaction(tid int)
+## RPC Interface
+The coordinator communicates with servers via the following RPCs:
 
-// Responses to the client
-type ResponseMsg struct {
-    tid        int
-    committed  bool
-    readValues map[string]interface{}
-}
-```
+- `Prepare`: Initiates the prepare phase, with servers responding with their vote.
+- `PreCommit`: Requests acknowledgment for the pre-commit phase.
+- `Commit`: Instructs servers to execute operations, returning Get values.
+- `Abort`: Notifies servers to abort a transaction.
+- `Query`: Retrieves transaction states during coordinator recovery.
 
-``` go
-// --- Server ---
+---
 
-// Initialize new Server
-//
-// keys is a slice of the keys that this server is responsible for storing
-func MakeServer(keys []string) *Server
+## Concurrency
 
-// This function should log a Get operation
-func (sv *Server) Get(tid int, key string)
+Concurrency is managed via `sync.RWMutex`:
+- `Set` uses `Lock()` for exclusive access.
+- `Get` uses `RLock()` for concurrent reads.
+- Methods like `Lock()`, `Unlock()`, `RLock()`, and `RUnlock()` ensure thread-safe key access.
 
-// This function should log a Set operation
-func (sv *Server) Set(tid int, key string, value interface{})
-```
 
-### RPC Interface
-
-We provide headers and wrapper methods for the RPCs that you'll need to send from the coordinator to the servers. However, you'll need to fill in the reply structs in `3pc.go` with whatever fields those RPCs need to respond with. If `args` have type `struct{}`, the RPC doesn't need arguments and you can ignore that argument. Similarly, if `reply` has type `*struct{}`, the RPC doesn't need a reply, and you can ignore that argument. 
-
-``` go
-func (sv *Server) Prepare(args *RPCArgs, reply *PrepareReply)
-
-func (sv *Server) Abort(args *RPCArgs, reply *struct{})
-
-func (sv *Server) Query(args struct{}, reply *QueryReply)
-
-func (sv *Server) PreCommit(args *RPCArgs, reply *struct{})
-
-func (sv *Server) Commit(args *RPCArgs, reply *CommitReply)
-```
-
+---
 
 ## Testing
 
-The tester will call your coordinator and servers with a series of operations. It will also call your coordinator with a series of FinishTransaction messages to finish transactions. Make sure to pass all tests before submitting. Output will be something like this:
+The project includes a comprehensive test suite to validate functionality:
 
-``` 
+- **Basic Tests:** Verify commits and aborts under normal and failure conditions.
+- **Recovery Tests:** Ensure correct coordinator recovery after crashes.
+- **Concurrency Tests:** Validate concurrent transaction handling for different and same keys.
+- **Serializability Tests:** Confirm transactions are executed serially when required.
+- **Disconnection Tests:** Test behavior when servers disconnect during various phases.
+
+Example test output:
+```bash
 $ go test -v -race
 
 === RUN   TestBasicCommit
@@ -171,5 +170,50 @@ TestRestartCommit: If the coordinator restarts in the middle of Commit, we commi
 --- PASS: TestRestartMidCommit (0.11s)
 PASS
 ok  	cs351/a6-3pc	2.182s
+
 ```
 
+
+
+## Setup and Installation
+
+Clone the project
+
+**Prerequisites:**
+
+- Go (version 1.16 or later)
+- Git
+
+**Clone the Repository:**
+```bash
+git clone https://github.com/your-username/three-phase-commit.git
+cd three-phase-commit
+```
+
+**Run Tests:**
+
+```bash
+  go test -v -race
+```
+
+## Usage
+
+To use this implementation in a distributed system:
+- Initialize servers with their respective keys using MakeServer.
+- Create a coordinator with a list of server endpoints using MakeCoordinator.
+- Clients can submit Get and Set operations to servers and call FinishTransaction on the coordinator to commit transactions.
+
+## Limitations
+
+- Server persistence is not implemented; failures are simulated via network disconnection.
+- The implementation assumes reliable RPC communication with retries on timeouts.
+
+## Contributing
+
+Contributions are welcome! Please submit a pull request or open an issue for bugs, improvements, or feature requests.
+
+## License
+
+
+This project is licensed under the 
+[MIT](https://choosealicense.com/licenses/mit/) License.
