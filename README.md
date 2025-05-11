@@ -1,8 +1,10 @@
+# Three-Phase Commit (3PC) 
+![License](https://img.shields.io/badge/license-MIT-green)
+![Docs](https://img.shields.io/badge/docs-read-blue)
+![Repo Size](https://img.shields.io/github/repo-size/jasonjiang9142/3PhaseCommit)
 
-# Three-Phase Commit (3PC) Implementation
 
-
-# Overview
+## Overview
 
 This project implements the Three-Phase Commit (3PC) protocol in distributed systems. 3PC is an extension of the original Two-Phase Commit (2PC) protocol, for ensuring atomic transactions on a distributed key-value store. The primary advantage of 3PC over 2PC is that the transaction coordinator does not need to maintain persistent state, allowing any server to potentially take over as coordinator in case of failure. This implementation handles coordinator crashes and recovery, ensuring robust transaction management in a distributed environment.
 
