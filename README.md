@@ -188,8 +188,8 @@ Clone the project
 
 **Clone the Repository:**
 ```bash
-git clone https://github.com/your-username/three-phase-commit.git
-cd three-phase-commit
+git clone https://github.com/jasonjiang9142/3PhaseCommit.git
+cd 3PhaseCommit
 ```
 
 **Run Tests:**
