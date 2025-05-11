@@ -210,12 +210,14 @@ To use this implementation in a distributed system:
 - Server persistence is not implemented; failures are simulated via network disconnection.
 - The implementation assumes reliable RPC communication with retries on timeouts.
 
+## Acknowledgments
+This project was completed as part of a coursework assignment for **CS351: Distributed Systems** at **Boston University**.
+
+
 ## Contributing
 
 Contributions are welcome! Please submit a pull request or open an issue for bugs, improvements, or feature requests.
 
 ## License
-
-
 This project is licensed under the 
 [MIT](https://choosealicense.com/licenses/mit/) License.
